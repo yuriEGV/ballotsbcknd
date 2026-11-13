@@ -30,6 +30,46 @@ function withElectionLock(electionId, fn) {
     return next;
 }
 
+function normalizeAndValidateSurveyAnswers(election, rawAnswers) {
+    const questions = Array.isArray(election.questions) ? election.questions : [];
+    if (!Array.isArray(rawAnswers) || rawAnswers.length === 0) {
+        if (questions.length > 0) {
+            throw new Error("Debes responder todas las preguntas de la encuesta.");
+        }
+        return null;
+    }
+
+    const byQuestionId = new Map(
+        rawAnswers.map((a) => [String(a.questionId || ""), a])
+    );
+
+    return questions.map((q) => {
+        const qId = q._id.toString();
+        const submitted = byQuestionId.get(qId);
+        const allowedSet = new Set((q.options || []).map((o) => String(o.label).trim()));
+        const selected = Array.isArray(submitted?.selectedOptions)
+            ? [...new Set(submitted.selectedOptions.map((s) => String(s).trim()).filter(Boolean))]
+            : [];
+
+        if (selected.length === 0) {
+            throw new Error(`Falta responder la pregunta: "${q.prompt}"`);
+        }
+        if (!q.allowMultiple && selected.length > 1) {
+            throw new Error(`La pregunta "${q.prompt}" admite una sola respuesta.`);
+        }
+        for (const opt of selected) {
+            if (!allowedSet.has(opt)) {
+                throw new Error(`Opción inválida "${opt}" en "${q.prompt}".`);
+            }
+        }
+        return {
+            questionId: qId,
+            questionPrompt: q.prompt,
+            selectedOptions: selected
+        };
+    });
+}
+
 /**
  * Cast a single unique, privacy-preserving ballot backed by cryptographic
  * commitments and optional/strict EVM smart-contract anchoring.
@@ -41,7 +81,8 @@ const castVote = async (
     ipAddress,
     device,
     isNulo = false,
-    votingKeyFromToken = null
+    votingKeyFromToken = null,
+    surveyAnswers = null
 ) => {
     if (!electionId) throw new Error("electionId es requerido");
 
@@ -60,9 +101,13 @@ const castVote = async (
     }
 
     const normalizedIsNulo = Boolean(isNulo);
+    const hasSurveyQuestions = Array.isArray(election.questions) && election.questions.length > 0;
     let resolvedCandidateId = null;
+    let resolvedSurveyAnswers = null;
 
-    if (!normalizedIsNulo && candidateId !== null && candidateId !== undefined && candidateId !== "") {
+    if (hasSurveyQuestions && !normalizedIsNulo) {
+        resolvedSurveyAnswers = normalizeAndValidateSurveyAnswers(election, surveyAnswers);
+    } else if (!normalizedIsNulo && candidateId !== null && candidateId !== undefined && candidateId !== "") {
         const candidateExists = election.candidates.some(
             (c) => c._id.toString() === candidateId.toString()
         );
@@ -124,6 +169,7 @@ const castVote = async (
                 electionId,
                 candidateId: resolvedCandidateId,
                 isNulo: normalizedIsNulo,
+                surveyAnswers: resolvedSurveyAnswers,
                 weight,
                 ballotNonce,
                 timestampMs
@@ -227,6 +273,7 @@ const castVote = async (
             const ballot = await Ballot.create({
                 election: electionId,
                 candidate: resolvedCandidateId,
+                ...(resolvedSurveyAnswers ? { surveyAnswers: resolvedSurveyAnswers } : {}),
                 isNulo: normalizedIsNulo,
                 weight,
                 sequenceIndex,

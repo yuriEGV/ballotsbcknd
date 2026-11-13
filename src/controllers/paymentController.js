@@ -36,6 +36,13 @@ function verifyMercadoPagoSignature(req) {
 
 async function activatePaidElection(election) {
     election.isPaid = true;
+    const autoApproved = !election.requiresAdminReview;
+    if (autoApproved && election.approvalStatus === "pending") {
+        election.approvalStatus = "approved";
+        election.approvedBy = election.approvedBy || "auto-self-service";
+        election.approvedAt = election.approvedAt || new Date();
+    }
+
     if (election.approvalStatus === "approved") {
         election.status = "active";
         if (web3Service.isWeb3Configured()) {
@@ -94,7 +101,11 @@ export const createPayment = async (req, res) => {
         }
 
         debugPrice = election.price;
-        const unitPriceNum = Number(election.price) || 15000;
+        const unitPriceNum = Number(election.price);
+        if (!Number.isFinite(unitPriceNum) || unitPriceNum <= 0) {
+            await activatePaidElection(election);
+            return res.json({ success: true, freeActivated: true, data: election });
+        }
 
         const baseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
         const backendUrl = process.env.BACKEND_URL || "";

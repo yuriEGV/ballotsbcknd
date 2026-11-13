@@ -7,6 +7,15 @@ import mongoose from "mongoose";
  * Uniqueness is enforced via `nullifierHash` (unique per election) and
  * `BallotsRegistry` smart contract on-chain.
  */
+const surveyAnswerSchema = new mongoose.Schema(
+    {
+        questionId: { type: String, required: true },
+        questionPrompt: { type: String, default: "" },
+        selectedOptions: [{ type: String, required: true }]
+    },
+    { _id: false }
+);
+
 const ballotSchema = new mongoose.Schema({
     election: {
         type: mongoose.Schema.Types.ObjectId,
@@ -17,6 +26,10 @@ const ballotSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         required: false,
         default: null
+    },
+    surveyAnswers: {
+        type: [surveyAnswerSchema],
+        default: undefined
     },
     isNulo: {
         type: Boolean,

@@ -66,8 +66,11 @@ function getClient() {
         return cachedClient;
     }
 
-    const provider = new ethers.JsonRpcProvider(cfg.rpcUrl, undefined, {
-        cacheTimeout: -1
+    const networkHint = cfg.configuredChainId ? ethers.Network.from(cfg.configuredChainId) : undefined;
+    const provider = new ethers.JsonRpcProvider(cfg.rpcUrl, networkHint, {
+        cacheTimeout: -1,
+        batchMaxCount: 1,
+        ...(networkHint ? { staticNetwork: networkHint } : {})
     });
     const wallet = new ethers.Wallet(cfg.privateKey, provider);
     const contract = new ethers.Contract(cfg.contractAddress, artifact.abi, wallet);

@@ -54,7 +54,7 @@ export const getAuditLog = async (req, res) => {
         }
 
         const ballots = await Ballot.find({ election: id })
-            .select("sequenceIndex timestampMs candidate isNulo weight nullifierHash ballotNonce choiceHash ballotCommitment previousHash hash web3 createdAt")
+            .select("sequenceIndex timestampMs candidate isNulo surveyAnswers weight nullifierHash ballotNonce choiceHash ballotCommitment previousHash hash web3 createdAt")
             .sort({ sequenceIndex: 1, createdAt: 1 })
             .lean();
 
@@ -75,6 +75,7 @@ export const getAuditLog = async (req, res) => {
                     electionId: id,
                     candidateId: b.candidate,
                     isNulo: Boolean(b.isNulo),
+                    surveyAnswers: b.surveyAnswers || null,
                     weight: b.weight || 1,
                     ballotNonce: b.ballotNonce,
                     timestampMs: b.timestampMs
@@ -94,9 +95,11 @@ export const getAuditLog = async (req, res) => {
             const isValid = Boolean(linkValid && commitmentValid && hashVerified);
             const candidateName = b.isNulo
                 ? "Voto Nulo"
-                : b.candidate
-                    ? candidateMap[b.candidate.toString()] || "Candidato"
-                    : "Voto en Blanco";
+                : Array.isArray(b.surveyAnswers) && b.surveyAnswers.length > 0
+                    ? `Encuesta (${b.surveyAnswers.length} resp.)`
+                    : b.candidate
+                        ? candidateMap[b.candidate.toString()] || "Candidato"
+                        : "Voto en Blanco";
 
             return {
                 index: b.sequenceIndex ?? index,
@@ -172,6 +175,7 @@ export const verifyBallotReceipt = async (req, res) => {
             electionId: id,
             candidateId: ballot.candidate,
             isNulo: Boolean(ballot.isNulo),
+            surveyAnswers: ballot.surveyAnswers || null,
             weight: ballot.weight || 1,
             ballotNonce: ballot.ballotNonce,
             timestampMs: ballot.timestampMs

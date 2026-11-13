@@ -30,7 +30,8 @@ export const castVote = async (req, res) => {
             ipAddress,
             device,
             Boolean(req.body.isNulo),
-            req.user.votingKey
+            req.user.votingKey,
+            req.body.surveyAnswers || null
         );
 
         res.status(201).json({

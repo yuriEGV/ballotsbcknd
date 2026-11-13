@@ -54,8 +54,17 @@ export const computePadronLeaf = (electionId, cedula) => {
     return ethers.keccak256(nullifier);
 };
 
-export const buildCanonicalChoiceCode = (candidateId, isNulo = false) => {
+export const buildCanonicalChoiceCode = (candidateId, isNulo = false, surveyAnswers = null) => {
     if (isNulo) return "NULO";
+    if (Array.isArray(surveyAnswers) && surveyAnswers.length > 0) {
+        const canonical = surveyAnswers
+            .map((ans) => ({
+                q: String(ans.questionId || ans.questionPrompt || ""),
+                opts: [...(ans.selectedOptions || [])].map((o) => String(o)).sort()
+            }))
+            .sort((a, b) => a.q.localeCompare(b.q));
+        return `SURVEY:${JSON.stringify(canonical)}`;
+    }
     if (candidateId) return candidateId.toString();
     return "BLANK";
 };
@@ -75,12 +84,13 @@ export const computeBallotCommitment = ({
     electionId,
     candidateId = null,
     isNulo = false,
+    surveyAnswers = null,
     weight = 1,
     ballotNonce,
     timestampMs
 }) => {
     const electionKey = computeElectionKey(electionId);
-    const choiceCode = buildCanonicalChoiceCode(candidateId, isNulo);
+    const choiceCode = buildCanonicalChoiceCode(candidateId, isNulo, surveyAnswers);
     const choiceHash = computeChoiceHash(electionId, choiceCode);
     const ballotCommitment = ethers.solidityPackedKeccak256(
         ["bytes32", "bytes32", "uint256", "bytes32", "uint256"],

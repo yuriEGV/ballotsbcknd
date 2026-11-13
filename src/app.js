@@ -11,6 +11,7 @@ import "./models/User.js";
 import "./models/Voter.js";
 import "./models/Election.js";
 import "./models/Ballot.js";
+import "./models/CitizenProfile.js";
 
 // Passport config
 import "./config/passport.js";
@@ -24,6 +25,8 @@ import quoteRoutes from "./routes/quote.routes.js";
 import couponRoutes from "./routes/coupon.routes.js";
 import paymentRoutes from "./routes/payment.routes.js";
 import userRoutes from "./routes/user.routes.js";
+import plazaRoutes from "./routes/plaza.routes.js";
+import { getPricingCatalog } from "./controllers/plazaController.js";
 
 const app = express();
 
@@ -55,6 +58,8 @@ app.use("/api/quotes", quoteRoutes);
 app.use("/api/coupons", couponRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/plaza", plazaRoutes);
+app.get("/api/pricing", getPricingCatalog);
 
 // Health check
 app.get("/", (_req, res) => {
