@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { GENESIS_HASH } from "../utils/crypto.js";
 
 const electionSchema = new mongoose.Schema({
     title: { type: String, required: true },
@@ -8,7 +9,7 @@ const electionSchema = new mongoose.Schema({
         ref: "User",
         required: false
     },
-    adminNote: { type: String, default: '' },
+    adminNote: { type: String, default: "" },
     electionType: {
         type: String,
         enum: [
@@ -55,9 +56,10 @@ const electionSchema = new mongoose.Schema({
         publicResults: { type: Boolean, default: false },
         weightedVoting: { type: Boolean, default: false },
         virtualAssembly: { type: Boolean, default: false },
-        allowAutoRegistration: { type: Boolean, default: false }
+        allowAutoRegistration: { type: Boolean, default: false },
+        requireVotingKey: { type: Boolean, default: false }
     },
-    approvedBy: { type: String, default: '' },
+    approvedBy: { type: String, default: "" },
     approvedAt: { type: Date },
     isPaid: { type: Boolean, default: false },
     price: { type: Number, default: 0 },
@@ -65,6 +67,20 @@ const electionSchema = new mongoose.Schema({
     modules: {
         virtualAssembly: { type: Boolean, default: false },
         technicalSupport: { type: Boolean, default: false }
+    },
+    ballotSequence: { type: Number, default: 0 },
+    chainTip: { type: String, default: GENESIS_HASH },
+    web3: {
+        electionKey: { type: String, default: "" },
+        registered: { type: Boolean, default: false },
+        registerTxHash: { type: String, default: "" },
+        finalized: { type: Boolean, default: false },
+        finalizeTxHash: { type: String, default: "" },
+        padronRoot: { type: String, default: GENESIS_HASH },
+        tallyRoot: { type: String, default: GENESIS_HASH },
+        contractAddress: { type: String, default: "" },
+        chainId: { type: Number, default: null },
+        network: { type: String, default: "" }
     },
     createdAt: { type: Date, default: Date.now }
 });

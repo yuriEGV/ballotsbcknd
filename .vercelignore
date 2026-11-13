@@ -1,0 +1,9 @@
+frontend-fixes/
+test/
+contracts/
+scripts/
+hardhat.config.js
+.git/
+.env
+.env.*
+

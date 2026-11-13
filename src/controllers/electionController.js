@@ -3,6 +3,16 @@ import Voter from "../models/Voter.js";
 import Ballot from "../models/Ballot.js";
 import User from "../models/User.js";
 import Coupon from "../models/Coupon.js";
+import { computeMerkleRoot, computePadronLeaf } from "../utils/crypto.js";
+import { computeElectionTallyRoot } from "./auditController.js";
+import web3Service from "../services/web3Service.js";
+
+function isOwnerOrAdmin(election, user) {
+    if (!user) return false;
+    if (user.role === "admin") return true;
+    const organizerId = election.organizer?._id?.toString() || election.organizer?.toString();
+    return Boolean(organizerId && organizerId === user.id?.toString());
+}
 
 export const createElection = async (req, res) => {
     try {
@@ -11,9 +21,8 @@ export const createElection = async (req, res) => {
         let isPaid = false;
         let price = 0;
 
-        // 1. Calculate base price (from QuoteForm.jsx logic)
         let base = 50000;
-        const vCount = parseInt(votersCount) || 0;
+        const vCount = parseInt(votersCount, 10) || 0;
         if (vCount <= 100) base += vCount * 500;
         else if (vCount <= 500) base += vCount * 400;
         else if (vCount <= 2000) base += vCount * 300;
@@ -24,37 +33,28 @@ export const createElection = async (req, res) => {
 
         price = base;
 
-        // 2. Apply Coupon if provided
         if (couponCode) {
             const coupon = await Coupon.findOne({ code: couponCode.toUpperCase(), isActive: true });
-            if (coupon) {
+            const isExpired = coupon?.validUntil && new Date() > new Date(coupon.validUntil);
+            if (coupon && !isExpired) {
                 const discount = (price * coupon.discountPercentage) / 100;
                 price -= discount;
                 if (price < 0) price = 0;
             }
         }
 
-        // 2. Complex Benefit Logic for Chilean Schools
         if (userId && electionType === "Colegios") {
             const user = await User.findById(userId);
             if (user && user.country === "Chile") {
                 const currentYear = new Date().getFullYear();
-
-                // Rule: 1 per year
-                const usedThisYear = user.freeElectionHistory.some(usage => usage.year === currentYear);
+                const usedThisYear = user.freeElectionHistory.some((usage) => usage.year === currentYear);
 
                 if (!usedThisYear) {
-                    // Rule: Only for 2 consecutive years
-                    const years = user.freeElectionHistory.map(u => u.year).sort((a, b) => b - a);
+                    const years = user.freeElectionHistory.map((u) => u.year).sort((a, b) => b - a);
                     let consecutiveCount = 0;
 
-                    if (years.length > 0) {
-                        // If they used it last year, they have 1 consecutive year
-                        if (years[0] === currentYear - 1) {
-                            consecutiveCount = 1;
-                        } else if (years[0] < currentYear - 1) {
-                            consecutiveCount = 0; // Break in sequence resets
-                        }
+                    if (years.length > 0 && years[0] === currentYear - 1) {
+                        consecutiveCount = 1;
                     }
 
                     if (consecutiveCount < 2) {
@@ -92,11 +92,7 @@ export const getElections = async (req, res) => {
     try {
         if (!req.user) return res.status(401).json({ success: false, message: "Unauthorized" });
 
-        let filter = {};
-        // If not admin, only see own elections
-        if (req.user.role !== 'admin') {
-            filter = { organizer: req.user.id };
-        }
+        const filter = req.user.role === "admin" ? {} : { organizer: req.user.id };
 
         const elections = await Election.find(filter)
             .populate("organizer", "username email organization")
@@ -113,18 +109,39 @@ export const getElectionById = async (req, res) => {
             .populate("organizer", "username email organization");
         if (!election) return res.status(404).json({ success: false, message: "Election not found" });
 
-        // Security Check: Organizer or Admin
-        const organizerId = election.organizer?._id?.toString() || election.organizer?.toString();
-        const userId = req.user?.id?.toString();
-
-        if (req.user && req.user.role !== 'admin' && organizerId) {
-            if (organizerId !== userId) {
+        // Authenticated non-admin organizers cannot inspect another organizer's private election
+        if (req.user && req.user.role !== "admin" && req.user.role !== "voter") {
+            const organizerId = election.organizer?._id?.toString() || election.organizer?.toString();
+            if (organizerId && organizerId !== req.user.id?.toString()) {
                 return res.status(403).json({
                     success: false,
-                    message: "Acceso denegado: No eres el dueño de esta elección",
-                    debug: { userId, organizerId }
+                    message: "Acceso denegado: No eres el dueño de esta elección"
                 });
             }
+        }
+
+        // Public / voter requests only receive public ballot metadata (never adminNote / price)
+        if (!req.user || req.user.role === "voter") {
+            return res.status(200).json({
+                success: true,
+                data: {
+                    _id: election._id,
+                    title: election.title,
+                    description: election.description,
+                    electionType: election.electionType,
+                    startDate: election.startDate,
+                    endDate: election.endDate,
+                    status: election.status,
+                    candidates: election.candidates,
+                    settings: election.settings,
+                    web3: {
+                        registered: Boolean(election.web3?.registered),
+                        contractAddress: election.web3?.contractAddress || "",
+                        chainId: election.web3?.chainId || null,
+                        network: election.web3?.network || ""
+                    }
+                }
+            });
         }
 
         res.status(200).json({ success: true, data: election });
@@ -134,7 +151,7 @@ export const getElectionById = async (req, res) => {
 };
 
 /**
- * Client: Update election configuration (title, candidates, dates, settings).
+ * Client/Admin: Update election configuration (title, candidates, dates, settings).
  * PUT /api/elections/:id
  */
 export const updateElection = async (req, res) => {
@@ -142,15 +159,104 @@ export const updateElection = async (req, res) => {
         const election = await Election.findById(req.params.id);
         if (!election) return res.status(404).json({ success: false, message: "Election not found" });
 
-        // Security: Owner or Admin only
-        if (req.user.role !== 'admin' && election.organizer?.toString() !== req.user.id) {
+        if (!isOwnerOrAdmin(election, req.user)) {
             return res.status(403).json({ success: false, message: "Forbidden: You cannot modify this election" });
         }
 
-        const allowed = ['title', 'description', 'startDate', 'endDate', 'candidates', 'settings', 'electionType'];
-        allowed.forEach(field => {
+        const ballotCount = await Ballot.countDocuments({ election: election._id });
+        if (ballotCount > 0 && req.body.candidates !== undefined) {
+            return res.status(400).json({
+                success: false,
+                message: "No se pueden modificar los candidatos después de haberse emitido votos."
+            });
+        }
+
+        const allowed = ["title", "description", "startDate", "endDate", "candidates", "settings", "electionType"];
+        allowed.forEach((field) => {
             if (req.body[field] !== undefined) election[field] = req.body[field];
         });
+        await election.save();
+        res.status(200).json({ success: true, data: election });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+};
+
+/**
+ * Organizer/Admin: Transition approved & paid election status ('active' <-> 'ended').
+ * PUT /api/elections/:id/status
+ */
+export const updateElectionStatus = async (req, res) => {
+    try {
+        const { status } = req.body;
+        if (!["active", "ended"].includes(status)) {
+            return res.status(400).json({ success: false, message: "status must be 'active' or 'ended'" });
+        }
+
+        const election = await Election.findById(req.params.id);
+        if (!election) return res.status(404).json({ success: false, message: "Election not found" });
+
+        if (!isOwnerOrAdmin(election, req.user)) {
+            return res.status(403).json({ success: false, message: "Forbidden" });
+        }
+
+        if (election.approvalStatus !== "approved" || !election.isPaid) {
+            return res.status(400).json({
+                success: false,
+                message: "La elección debe estar pagada y aprobada antes de activarse."
+            });
+        }
+
+        election.status = status;
+
+        if (web3Service.isWeb3Configured()) {
+            const voters = await Voter.find({ election: election._id }).select("cedula").lean();
+            const padronRoot = computeMerkleRoot(voters.map((v) => computePadronLeaf(election._id, v.cedula)));
+
+            if (status === "active") {
+                const reg = await web3Service.ensureElectionRegistered({
+                    electionId: election._id,
+                    padronRoot,
+                    openPadron: Boolean(election.settings?.allowAutoRegistration),
+                    startDate: election.startDate,
+                    endDate: election.endDate
+                });
+                election.web3 = {
+                    ...(election.web3 || {}),
+                    electionKey: reg.electionKey,
+                    registered: true,
+                    registerTxHash: election.web3?.registerTxHash || reg.txHash || "",
+                    padronRoot,
+                    contractAddress: reg.contractAddress,
+                    chainId: reg.chainId,
+                    network: reg.networkName
+                };
+            } else if (status === "ended") {
+                const ballots = await Ballot.find({ election: election._id })
+                    .select("ballotCommitment choiceHash weight")
+                    .lean();
+                const tallyRoot = computeElectionTallyRoot(ballots);
+                const fin = await web3Service.finalizeElectionOnChain({
+                    electionId: election._id,
+                    tallyRoot,
+                    padronRoot,
+                    openPadron: Boolean(election.settings?.allowAutoRegistration),
+                    startDate: election.startDate,
+                    endDate: election.endDate
+                });
+                election.web3 = {
+                    ...(election.web3 || {}),
+                    registered: true,
+                    finalized: true,
+                    tallyRoot,
+                    finalizeTxHash: fin.txHash || election.web3?.finalizeTxHash || "",
+                    contractAddress: fin.contractAddress || election.web3?.contractAddress || "",
+                    chainId: fin.chainId || election.web3?.chainId || null,
+                    network: fin.networkName || election.web3?.network || ""
+                };
+            }
+        }
+
         await election.save();
         res.status(200).json({ success: true, data: election });
     } catch (err) {
@@ -177,12 +283,40 @@ export const evaluateElection = async (req, res) => {
 
         election.approvalStatus = approvalStatus;
         election.adminNote = reason || "";
-        // Log who approved it
         election.approvedBy = req.user?.email || req.user?.id || "unknown";
         election.approvedAt = new Date();
 
         if (approvalStatus === "approved") {
-            election.status = "draft";
+            // Once paid and approved, transition election to active so voters can vote
+            election.status = "active";
+
+            if (web3Service.isWeb3Configured()) {
+                try {
+                    const voters = await Voter.find({ election: election._id }).select("cedula").lean();
+                    const padronRoot = computeMerkleRoot(
+                        voters.map((v) => computePadronLeaf(election._id, v.cedula))
+                    );
+                    const reg = await web3Service.ensureElectionRegistered({
+                        electionId: election._id,
+                        padronRoot,
+                        openPadron: Boolean(election.settings?.allowAutoRegistration),
+                        startDate: election.startDate,
+                        endDate: election.endDate
+                    });
+                    election.web3 = {
+                        ...(election.web3 || {}),
+                        electionKey: reg.electionKey,
+                        registered: true,
+                        registerTxHash: reg.txHash || "",
+                        padronRoot,
+                        contractAddress: reg.contractAddress,
+                        chainId: reg.chainId,
+                        network: reg.networkName
+                    };
+                } catch (web3Err) {
+                    console.warn("[Web3] Election registration warning on approval:", web3Err.message);
+                }
+            }
         }
 
         await election.save();
@@ -201,17 +335,16 @@ export const getElectionVoters = async (req, res) => {
         const election = await Election.findById(req.params.id);
         if (!election) return res.status(404).json({ success: false, message: "Election not found" });
 
-        const organizerId = election.organizer?._id?.toString() || election.organizer?.toString();
-        if (req.user.role !== 'admin' && organizerId !== req.user.id) {
+        if (!isOwnerOrAdmin(election, req.user)) {
             return res.status(403).json({ success: false, message: "Forbidden: Access denied to voters list" });
         }
 
         const voters = await Voter.find({ election: req.params.id })
-            .select("name cedula email hasVoted votedAt auditIp")
+            .select("name cedula email weight hasVoted votedAt auditIp")
             .sort({ hasVoted: -1, name: 1 });
 
         const total = voters.length;
-        const voted = voters.filter(v => v.hasVoted).length;
+        const voted = voters.filter((v) => v.hasVoted).length;
 
         res.status(200).json({
             success: true,
@@ -224,7 +357,7 @@ export const getElectionVoters = async (req, res) => {
 };
 
 /**
- * Get full report/acta for an election (Results, Quorum, List of Voters)
+ * Get full report/acta for an election (Results, Quorum, List of Voters, Web3 Proof).
  * GET /api/elections/:id/report
  */
 export const getElectionReport = async (req, res) => {
@@ -233,40 +366,43 @@ export const getElectionReport = async (req, res) => {
         const election = await Election.findById(id).lean();
         if (!election) return res.status(404).json({ success: false, message: "Election not found" });
 
-        const organizerId = election.organizer?._id?.toString() || election.organizer?.toString();
-        if (req.user.role !== 'admin' && organizerId !== req.user.id) {
+        if (!isOwnerOrAdmin(election, req.user)) {
             return res.status(403).json({ success: false, message: "Forbidden: Access denied to report" });
         }
 
-        // 1. Get totalPadron (all voters registered for this election)
         const totalPadron = await Voter.countDocuments({ election: id });
-
-        // 2. Get all ballots for this election
         const ballots = await Ballot.find({ election: id }).lean();
         const votedCount = ballots.length;
+        const weighted = Boolean(election.settings?.weightedVoting);
 
-        // 3. Calculate results per candidate
-        const results = election.candidates.map(candidate => {
-            const votes = ballots.filter(b => b.candidate && b.candidate.toString() === candidate._id.toString()).length;
+        const tallyWeight = (list) =>
+            list.reduce((acc, b) => acc + (weighted ? Number(b.weight) || 1 : 1), 0);
+
+        const results = (election.candidates || []).map((candidate) => {
+            const matching = ballots.filter(
+                (b) => b.candidate && b.candidate.toString() === candidate._id.toString()
+            );
             return {
                 ...candidate,
-                votes
+                votes: tallyWeight(matching),
+                rawVotes: matching.length
             };
         });
 
-        // 4. Calculate Blank/Nulo votes
-        const blankVotes = ballots.filter(b => !b.candidate && !b.isNulo).length;
-        const nuloVotes = ballots.filter(b => b.isNulo).length;
+        const blankBallots = ballots.filter((b) => !b.candidate && !b.isNulo);
+        const nuloBallots = ballots.filter((b) => b.isNulo);
+        const blankVotes = tallyWeight(blankBallots);
+        const nuloVotes = tallyWeight(nuloBallots);
 
-        // 5. Quorum & Abstention
         const quorum = totalPadron > 0 ? (votedCount / totalPadron) * 100 : 0;
-        const abstentionCount = totalPadron - votedCount;
+        const abstentionCount = Math.max(0, totalPadron - votedCount);
 
-        // 6. Detailed Voter List (already partially handled by getElectionVoters)
-        // We'll return it here for the "Acta"
         const votersList = await Voter.find({ election: id })
-            .select("name cedula hasVoted votedAt auditIp")
+            .select("name cedula weight hasVoted votedAt auditIp")
             .sort({ name: 1 });
+
+        const onChain = await web3Service.getElectionOnChain(id);
+        const anchoredVotesCount = ballots.filter((b) => b.web3?.anchored).length;
 
         res.status(200).json({
             success: true,
@@ -278,37 +414,18 @@ export const getElectionReport = async (req, res) => {
                     abstentionCount,
                     blankVotes,
                     nuloVotes,
+                    totalWeight: tallyWeight(ballots),
                     quorum: quorum.toFixed(2),
+                    anchoredVotesCount
+                },
+                web3: {
+                    ...onChain,
+                    tallyRoot: computeElectionTallyRoot(ballots)
                 },
                 results,
                 voters: votersList
             }
         });
-    } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
-    }
-};
-
-import { v4 as uuidv4 } from "uuid";
-import { sendVoteConfirmationEmail } from "../utils/emailService.js";
-
-export const castVote = async (req, res) => {
-    try {
-        const { cedula, voterName, voterEmail, choice, ip, isNulo = false } = req.body;
-        const election = await Election.findById(req.params.id);
-        if (!election || election.status !== "active") {
-            return res.status(400).json({ success: false, message: "Election is not active." });
-        }
-        const uniqueCode = uuidv4();
-        const votedAt = new Date();
-        if (voterEmail) {
-            sendVoteConfirmationEmail({
-                to: voterEmail, name: voterName, rut: cedula,
-                electionTitle: election.title, uniqueCode,
-                ip: ip || "Unknown", date: votedAt,
-            }).catch(err => console.error("[Email] Failed:", err));
-        }
-        res.status(200).json({ success: true, message: "Voto recibido correctamente.", data: { uniqueCode, votedAt } });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }

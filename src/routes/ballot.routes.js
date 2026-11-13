@@ -1,8 +1,10 @@
 import express from "express";
-import { castVote } from "../controllers/ballotController.js";
-import { requireAuth } from "../middleware/authMiddleware.js";
+import { castVote, getWeb3Health } from "../controllers/ballotController.js";
+import { requireAuth, requireVoter } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
-router.post("/", requireAuth, castVote);
+
+router.get("/web3-status", getWeb3Health);
+router.post("/", requireAuth, requireVoter, castVote);
 
 export default router;

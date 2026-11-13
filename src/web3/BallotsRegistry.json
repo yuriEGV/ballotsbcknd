@@ -1,0 +1,544 @@
+{
+  "contractName": "BallotsRegistry",
+  "compiler": "0.8.38+commit.1835d247.Emscripten.clang",
+  "abi": [
+    {
+      "inputs": [],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "electionKey",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "voteCount",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "totalWeight",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "finalChainTip",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "tallyRoot",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "ElectionFinalized",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "electionKey",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "padronRoot",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "openPadron",
+          "type": "bool"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "startTime",
+          "type": "uint64"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "endTime",
+          "type": "uint64"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "ElectionRegistered",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousOwner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnershipTransferred",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "electionKey",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "padronRoot",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "PadronRootUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "relayer",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "bool",
+          "name": "authorized",
+          "type": "bool"
+        }
+      ],
+      "name": "RelayerUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "electionKey",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "voteIndex",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "nullifier",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "ballotCommitment",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "previousTip",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "newTip",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "weight",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "VoteAnchored",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "electionKey",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "nullifier",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "ballotCommitment",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint256",
+          "name": "weight",
+          "type": "uint256"
+        }
+      ],
+      "name": "castVote",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "name": "commitmentVoteIndex",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "electionKey",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "tallyRoot",
+          "type": "bytes32"
+        }
+      ],
+      "name": "finalizeElection",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "electionKey",
+          "type": "bytes32"
+        }
+      ],
+      "name": "getElectionRecord",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "bool",
+              "name": "exists",
+              "type": "bool"
+            },
+            {
+              "internalType": "bool",
+              "name": "finalized",
+              "type": "bool"
+            },
+            {
+              "internalType": "bool",
+              "name": "openPadron",
+              "type": "bool"
+            },
+            {
+              "internalType": "uint64",
+              "name": "startTime",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "endTime",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint256",
+              "name": "voteCount",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "totalWeight",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "padronRoot",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "chainTip",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "tallyRoot",
+              "type": "bytes32"
+            }
+          ],
+          "internalType": "struct BallotsRegistry.ElectionRecord",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "electionKey",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "padronRoot",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bool",
+          "name": "openPadron",
+          "type": "bool"
+        },
+        {
+          "internalType": "uint64",
+          "name": "startTime",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint64",
+          "name": "endTime",
+          "type": "uint64"
+        }
+      ],
+      "name": "registerElection",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "relayers",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "relayer",
+          "type": "address"
+        },
+        {
+          "internalType": "bool",
+          "name": "authorized",
+          "type": "bool"
+        }
+      ],
+      "name": "setRelayer",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "transferOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "electionKey",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "padronRoot",
+          "type": "bytes32"
+        }
+      ],
+      "name": "updatePadronRoot",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "name": "usedNullifiers",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "electionKey",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "nullifier",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "ballotCommitment",
+          "type": "bytes32"
+        }
+      ],
+      "name": "verifyReceipt",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "nullifierUsed",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "commitmentRecorded",
+          "type": "bool"
+        },
+        {
+          "internalType": "uint256",
+          "name": "voteIndexPlusOne",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "currentChainTip",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bool",
+          "name": "finalized",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x6080604052348015600e575f5ffd5b505f80546001600160a01b031916339081178255808252600160208190526040808420805460ff1916909217909155519091907f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e0908290a360405160019033907f4b36b2e66f38ed349bec532105790177f1283bcbc094e6cd48565195d3033c43905f90a36111ab806100a05f395ff3fe608060405234801561000f575f5ffd5b50600436106100b1575f3560e01c8063b8eb2a141161006e578063b8eb2a14146101fa578063c315b62a14610232578063ca7eabd614610245578063ecd8dc3a14610258578063f17182041461026b578063f2fde38b14610377575f5ffd5b80630eefb0ed146100b5578063466f85cb146100f75780635300f8411461010c5780635d6b0af41461012e5780638da5cb5b1461014157806391a93de31461016b575b5f5ffd5b6100e26100c3366004610e18565b600360209081525f928352604080842090915290825290205460ff1681565b60405190151581526020015b60405180910390f35b61010a610105366004610e18565b61038a565b005b6100e261011a366004610e53565b60016020525f908152604090205460ff1681565b61010a61013c366004610e18565b6104fa565b5f54610153906001600160a01b031681565b6040516001600160a01b0390911681526020016100ee565b6101ce610179366004610e73565b5f838152600260209081526040808320600383528184209584529482528083205495835260048083528184209484529390915290205490820154915460ff938416948215159492939261010090920490911690565b60408051951515865293151560208601529284019190915260608301521515608082015260a0016100ee565b610224610208366004610e18565b600460209081525f928352604080842090915290825290205481565b6040519081526020016100ee565b61010a610240366004610ec2565b610676565b61010a610253366004610f15565b6108b9565b61010a610266366004610f44565b610c6e565b61036a610279366004610f75565b60408051610140810182525f80825260208201819052918101829052606081018290526080810182905260a0810182905260c0810182905260e081018290526101008101829052610120810191909152505f90815260026020818152604092839020835161014081018552815460ff8082161515835261010080830482161515958401959095526201000082041615159582019590955267ffffffffffffffff6301000000860481166060830152600160581b9095049094166080850152600181015460a08501529182015460c0840152600382015460e08401526004820154908301526005015461012082015290565b6040516100ee9190610f8c565b61010a610385366004610e53565b610d40565b335f9081526001602052604090205460ff16806103b057505f546001600160a01b031633145b6103d55760405162461bcd60e51b81526004016103cc90611033565b60405180910390fd5b5f828152600260205260409020805460ff166104035760405162461bcd60e51b81526004016103cc90611079565b8054610100900460ff161561042a5760405162461bcd60e51b81526004016103cc906110c1565b816104825760405162461bcd60e51b815260206004820152602260248201527f42616c6c6f747352656769737472793a20696e76616c69642074616c6c79526f6044820152611bdd60f21b60648201526084016103cc565b805461ff00191661010017815560058101829055600181015460028201546004830154604080519384526020840192909252908201526060810183905242608082015283907f6346f5d00b7cd4e7f016e5390516a17d4c39835ab1217879358afd9cf961d2009060a0015b60405180910390a2505050565b335f9081526001602052604090205460ff168061052057505f546001600160a01b031633145b61053c5760405162461bcd60e51b81526004016103cc90611033565b5f828152600260205260409020805460ff16801561056157508054610100900460ff16155b6105b95760405162461bcd60e51b8152602060048201526024808201527f42616c6c6f747352656769737472793a20656c656374696f6e206e6f742061636044820152637469766560e01b60648201526084016103cc565b805462010000900460ff16806105d157506001810154155b6106385760405162461bcd60e51b815260206004820152603260248201527f42616c6c6f747352656769737472793a20706164726f6e2066726f7a656e20616044820152716674657220766f74696e672073746172747360701b60648201526084016103cc565b600381018290556040805183815242602082015284917f30e939622f6dc5c8cbecbcc039214532f02ab8e2d1478ff1ceb28f1fa7f10d3d91016104ed565b335f9081526001602052604090205460ff168061069c57505f546001600160a01b031633145b6106b85760405162461bcd60e51b81526004016103cc90611033565b846107115760405162461bcd60e51b8152602060048201526024808201527f42616c6c6f747352656769737472793a20696e76616c696420656c656374696f6044820152636e4b657960e01b60648201526084016103cc565b8167ffffffffffffffff168167ffffffffffffffff16116107855760405162461bcd60e51b815260206004820152602860248201527f42616c6c6f747352656769737472793a20696e76616c696420656c656374696f6044820152676e2077696e646f7760c01b60648201526084016103cc565b5f858152600260205260409020805460ff16156107f95760405162461bcd60e51b815260206004820152602c60248201527f42616c6c6f747352656769737472793a20656c656374696f6e20616c7265616460448201526b1e481c9959da5cdd195c995960a21b60648201526084016103cc565b805467ffffffffffffffff838116600160581b810267ffffffffffffffff60581b19928716630100000081029390931672ffffffffffffffffffffffffffffffff0000001989151562010000810262ff00ff1990971696909617600117161717845560038401889055604080518981526020810194909452830191909152606082015242608082015286907f7b380ad437e7334c742a1448a6651f6e9c50d8cb70d1f716e7a1a35370bfd4ed9060a00160405180910390a2505050505050565b335f9081526001602052604090205460ff16806108df57505f546001600160a01b031633145b6108fb5760405162461bcd60e51b81526004016103cc90611033565b5f848152600260205260409020805460ff166109295760405162461bcd60e51b81526004016103cc90611079565b8054610100900460ff16156109505760405162461bcd60e51b81526004016103cc906110c1565b836109a85760405162461bcd60e51b815260206004820152602260248201527f42616c6c6f747352656769737472793a20696e76616c6964206e756c6c69666960448201526132b960f11b60648201526084016103cc565b82610a015760405162461bcd60e51b815260206004820152602360248201527f42616c6c6f747352656769737472793a20696e76616c696420636f6d6d69746d604482015262195b9d60ea1b60648201526084016103cc565b5f8211610a615760405162461bcd60e51b815260206004820152602860248201527f42616c6c6f747352656769737472793a20776569676874206d75737420626520604482015267706f73697469766560c01b60648201526084016103cc565b5f85815260036020908152604080832087845290915290205460ff1615610adb5760405162461bcd60e51b815260206004820152602860248201527f42616c6c6f747352656769737472793a206475706c696361746520766f7465206044820152671c995a9958dd195960c21b60648201526084016103cc565b5f85815260046020908152604080832086845290915290205415610b4f5760405162461bcd60e51b815260206004820152602560248201527f42616c6c6f747352656769737472793a206475706c696361746520636f6d6d696044820152641d1b595b9d60da1b60648201526084016103cc565b5f8581526003602090815260408083208784529091529020805460ff191660019081179091558181015490610b8590829061110c565b5f878152600460208181526040808420898552825280842094909455908501548351918201819052928101889052606081018790526080810186905260a00160408051601f198184030181529190528051602090910120600485018190559050610bf083600161110c565b846001018190555084846002015f828254610c0b919061110c565b9091555050604080518781526020810184905290810182905260608101869052426080820152879084908a907f0e9f5fc1b2bb6148e31e69f6f42380473a60101bfce86747e2d59fef2559fa249060a00160405180910390a45050505050505050565b5f546001600160a01b03163314610c975760405162461bcd60e51b81526004016103cc90611131565b6001600160a01b038216610ced5760405162461bcd60e51b815260206004820152601d60248201527f42616c6c6f747352656769737472793a207a65726f206164647265737300000060448201526064016103cc565b6001600160a01b0382165f81815260016020526040808220805460ff191685151590811790915590519092917f4b36b2e66f38ed349bec532105790177f1283bcbc094e6cd48565195d3033c4391a35050565b5f546001600160a01b03163314610d695760405162461bcd60e51b81526004016103cc90611131565b6001600160a01b038116610dbf5760405162461bcd60e51b815260206004820152601d60248201527f42616c6c6f747352656769737472793a207a65726f206164647265737300000060448201526064016103cc565b5f80546040516001600160a01b03808516939216917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e091a35f80546001600160a01b0319166001600160a01b0392909216919091179055565b5f5f60408385031215610e29575f5ffd5b50508035926020909101359150565b80356001600160a01b0381168114610e4e575f5ffd5b919050565b5f60208284031215610e63575f5ffd5b610e6c82610e38565b9392505050565b5f5f5f60608486031215610e85575f5ffd5b505081359360208301359350604090920135919050565b80358015158114610e4e575f5ffd5b803567ffffffffffffffff81168114610e4e575f5ffd5b5f5f5f5f5f60a08688031215610ed6575f5ffd5b8535945060208601359350610eed60408701610e9c565b9250610efb60608701610eab565b9150610f0960808701610eab565b90509295509295909350565b5f5f5f5f60808587031215610f28575f5ffd5b5050823594602084013594506040840135936060013592509050565b5f5f60408385031215610f55575f5ffd5b610f5e83610e38565b9150610f6c60208401610e9c565b90509250929050565b5f60208284031215610f85575f5ffd5b5035919050565b81511515815261014081016020830151610faa602084018215159052565b506040830151610fbe604084018215159052565b506060830151610fda606084018267ffffffffffffffff169052565b506080830151610ff6608084018267ffffffffffffffff169052565b5060a083015160a083015260c083015160c083015260e083015160e083015261010083015161010083015261012083015161012083015292915050565b60208082526026908201527f42616c6c6f747352656769737472793a2063616c6c6572206973206e6f74207260408201526532b630bcb2b960d11b606082015260800190565b60208082526028908201527f42616c6c6f747352656769737472793a20656c656374696f6e206e6f7420726560408201526719da5cdd195c995960c21b606082015260800190565b6020808252602b908201527f42616c6c6f747352656769737472793a20656c656374696f6e20616c7265616460408201526a1e48199a5b985b1a5e995960aa1b606082015260800190565b8082018082111561112b57634e487b7160e01b5f52601160045260245ffd5b92915050565b60208082526024908201527f42616c6c6f747352656769737472793a2063616c6c6572206973206e6f74206f6040820152633bb732b960e11b60608201526080019056fea26469706673582212209f6235cd043ef39770e1886aefa44d2a04dc30040f41aae9bfc96bd563dae32764736f6c63430008260033"
+}

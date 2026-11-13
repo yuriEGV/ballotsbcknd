@@ -1,13 +1,11 @@
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
+import { getJwtSecret } from "../config/jwt.js";
 
 export const protect = async (req, res, next) => {
     let token;
 
-    if (
-        req.headers.authorization &&
-        req.headers.authorization.startsWith("Bearer")
-    ) {
+    if (req.headers.authorization && req.headers.authorization.startsWith("Bearer")) {
         token = req.headers.authorization.split(" ")[1];
     }
 
@@ -19,10 +17,13 @@ export const protect = async (req, res, next) => {
     }
 
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, getJwtSecret());
         req.user = await User.findById(decoded.id).select("-password");
+        if (!req.user) {
+            return res.status(401).json({ success: false, error: "Not authorized" });
+        }
         next();
-    } catch (error) {
+    } catch {
         res.status(401).json({
             success: false,
             error: "Token invalid"
@@ -32,7 +33,7 @@ export const protect = async (req, res, next) => {
 
 export const authorize = (...roles) => {
     return (req, res, next) => {
-        if (!roles.includes(req.user.role)) {
+        if (!req.user || !roles.includes(req.user.role)) {
             return res.status(403).json({
                 success: false,
                 error: "User role not authorized"

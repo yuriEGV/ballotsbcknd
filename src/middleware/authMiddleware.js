@@ -1,18 +1,18 @@
-import jwt from 'jsonwebtoken';
+import jwt from "jsonwebtoken";
+import { getJwtSecret } from "../config/jwt.js";
 
 /**
- * Optional JWT middleware — attaches req.user if token is present.
+ * Optional JWT middleware — attaches req.user if a valid token is present.
  * Does NOT block the request if no token is provided.
  */
-export const optionalAuth = (req, res, next) => {
+export const optionalAuth = (req, _res, next) => {
     const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.split(' ')[1];
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+        const token = authHeader.split(" ")[1];
         try {
-            const decoded = jwt.verify(token, process.env.JWT_SECRET || '123456789qwertyuio');
-            req.user = decoded;
+            req.user = jwt.verify(token, getJwtSecret());
         } catch {
-            // token invalid or expired — proceed without user
+            // Token invalid or expired — proceed without user
         }
     }
     next();
@@ -23,16 +23,15 @@ export const optionalAuth = (req, res, next) => {
  */
 export const requireAuth = (req, res, next) => {
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ success: false, message: 'No autorizado. Token requerido.' });
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ success: false, message: "No autorizado. Token requerido." });
     }
-    const token = authHeader.split(' ')[1];
+    const token = authHeader.split(" ")[1];
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || '123456789qwertyuio');
-        req.user = decoded;
+        req.user = jwt.verify(token, getJwtSecret());
         next();
     } catch {
-        return res.status(401).json({ success: false, message: 'Token inválido o expirado.' });
+        return res.status(401).json({ success: false, message: "Token inválido o expirado." });
     }
 };
 
@@ -40,8 +39,18 @@ export const requireAuth = (req, res, next) => {
  * Admin-only middleware — blocks if not role=admin.
  */
 export const requireAdmin = (req, res, next) => {
-    if (!req.user || req.user.role !== 'admin') {
-        return res.status(403).json({ success: false, message: 'Acceso restringido a administradores.' });
+    if (!req.user || req.user.role !== "admin") {
+        return res.status(403).json({ success: false, message: "Acceso restringido a administradores." });
+    }
+    next();
+};
+
+/**
+ * Voter-only middleware — ensures the bearer token belongs to an authenticated voter.
+ */
+export const requireVoter = (req, res, next) => {
+    if (!req.user || req.user.role !== "voter") {
+        return res.status(403).json({ success: false, message: "Token de votante inválido." });
     }
     next();
 };
