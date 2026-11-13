@@ -149,3 +149,17 @@ export const computeTallyLeaf = ({ ballotCommitment, choiceHash, weight = 1 }) =
         [ballotCommitment, choiceHash, BigInt(weight)]
     );
 };
+
+/**
+ * Deterministic non-zero commitment for elections finalized with 0 valid ballots.
+ * Satisfies BallotsRegistry.sol's `tallyRoot != bytes32(0)` check cleanly.
+ */
+export const computeEmptyTallyRoot = (electionId = null) => {
+    if (electionId) {
+        return ethers.solidityPackedKeccak256(
+            ["string", "string"],
+            ["BALLOTS:EMPTY_TALLY:V1", electionId.toString()]
+        );
+    }
+    return ethers.keccak256(ethers.toUtf8Bytes("BALLOTS:EMPTY_TALLY:V1"));
+};

@@ -1,6 +1,6 @@
 import fs from "fs";
 import { ethers } from "ethers";
-import { computeElectionKey, GENESIS_HASH } from "../utils/crypto.js";
+import { computeElectionKey, computeEmptyTallyRoot, GENESIS_HASH } from "../utils/crypto.js";
 
 const artifact = JSON.parse(
     fs.readFileSync(new URL("../web3/BallotsRegistry.json", import.meta.url), "utf8")
@@ -192,8 +192,10 @@ async function ensureElectionRegisteredInternal(client, {
         };
     }
 
-    const startSec = Math.floor(new Date(startDate || Date.now()).getTime() / 1000);
-    const rawEndSec = Math.floor(new Date(endDate || Date.now() + 86400000).getTime() / 1000);
+    const parsedStartMs = startDate ? new Date(startDate).getTime() : NaN;
+    const startSec = Number.isFinite(parsedStartMs) ? Math.floor(parsedStartMs / 1000) : Math.floor(Date.now() / 1000);
+    const parsedEndMs = endDate ? new Date(endDate).getTime() : NaN;
+    const rawEndSec = Number.isFinite(parsedEndMs) ? Math.floor(parsedEndMs / 1000) : startSec + 86400;
     const endSec = rawEndSec > startSec ? rawEndSec : startSec + 60;
 
     const receipt = await sendContractTx(client, "registerElection", [
@@ -391,7 +393,11 @@ export async function finalizeElectionOnChain({ electionId, tallyRoot, padronRoo
             };
         }
 
-        const receipt = await sendContractTx(client, "finalizeElection", [electionKey, tallyRoot]);
+        const safeTallyRoot = !tallyRoot || tallyRoot === GENESIS_HASH
+            ? computeEmptyTallyRoot(electionId)
+            : tallyRoot;
+
+        const receipt = await sendContractTx(client, "finalizeElection", [electionKey, safeTallyRoot]);
         return {
             configured: true,
             finalized: true,
@@ -402,7 +408,7 @@ export async function finalizeElectionOnChain({ electionId, tallyRoot, padronRoo
             txHash: receipt.hash,
             blockNumber: Number(receipt.blockNumber),
             explorerUrl: buildTxExplorerUrl(chainId, receipt.hash, client.cfg.explorerBaseUrl),
-            tallyRoot
+            tallyRoot: safeTallyRoot
         };
     });
 }

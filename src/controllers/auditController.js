@@ -4,6 +4,7 @@ import Voter from "../models/Voter.js";
 import {
     GENESIS_HASH,
     computeBallotCommitment,
+    computeEmptyTallyRoot,
     computeMerkleRoot,
     computePadronLeaf,
     computeRollingHash,
@@ -18,7 +19,7 @@ function isOwnerOrAdmin(election, user) {
     return Boolean(organizerId && organizerId === user.id?.toString());
 }
 
-export function computeElectionTallyRoot(ballots = []) {
+export function computeElectionTallyRoot(ballots = [], electionId = null) {
     const leaves = ballots
         .filter((b) => b.ballotCommitment && b.choiceHash)
         .map((b) =>
@@ -28,6 +29,9 @@ export function computeElectionTallyRoot(ballots = []) {
                 weight: b.weight || 1
             })
         );
+    if (leaves.length === 0) {
+        return computeEmptyTallyRoot(electionId);
+    }
     return computeMerkleRoot(leaves);
 }
 
@@ -146,7 +150,7 @@ export const getAuditLog = async (req, res) => {
                 localIntegrity,
                 matchesOnChainTip,
                 chainIntegrity,
-                tallyRoot: computeElectionTallyRoot(ballots),
+                tallyRoot: computeElectionTallyRoot(ballots, id),
                 onChain
             }
         });
@@ -273,7 +277,7 @@ export const anchorElectionWeb3 = async (req, res) => {
             const ballots = await Ballot.find({ election: id })
                 .select("ballotCommitment choiceHash weight")
                 .lean();
-            const tallyRoot = computeElectionTallyRoot(ballots);
+            const tallyRoot = computeElectionTallyRoot(ballots, id);
             finalizeResult = await web3Service.finalizeElectionOnChain({
                 electionId: id,
                 tallyRoot,

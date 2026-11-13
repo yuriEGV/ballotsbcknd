@@ -1,6 +1,6 @@
-import express from 'express';
-import { getUsers, updateUser, deleteUser } from '../controllers/userController.js';
-import { requireAuth, requireAdmin } from '../middleware/authMiddleware.js';
+import express from "express";
+import { getUsers, createUser, updateUser, deleteUser } from "../controllers/userController.js";
+import { requireAuth, requireAdmin } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -8,8 +8,9 @@ const router = express.Router();
 router.use(requireAuth);
 router.use(requireAdmin);
 
-router.get('/', getUsers);
-router.put('/:id', updateUser);
-router.delete('/:id', deleteUser);
+router.get("/", getUsers);
+router.post("/", createUser);
+router.put("/:id", updateUser);
+router.delete("/:id", deleteUser);
 
 export default router;

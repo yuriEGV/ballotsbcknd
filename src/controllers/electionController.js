@@ -298,25 +298,32 @@ export const updateElection = async (req, res) => {
         allowed.forEach((field) => {
             if (req.body[field] !== undefined) election[field] = req.body[field];
         });
+        if (ballotCount === 0 && req.body.processKind !== undefined && ["election", "survey"].includes(req.body.processKind)) {
+            election.processKind = req.body.processKind;
+        }
         if (req.body.questions !== undefined) {
             election.questions = sanitizeQuestions(req.body.questions);
         }
         await election.save();
         res.status(200).json({ success: true, data: election });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, message: err.message, error: err.message });
     }
 };
 
 /**
- * Organizer/Admin: Transition approved & paid election status ('active' <-> 'ended').
+ * Organizer/Admin: Transition election status ('draft' | 'active' | 'ended').
+ * Supports pausing/setting to pending ('draft'), activating ('active'), and closing ('ended').
  * PUT /api/elections/:id/status
  */
 export const updateElectionStatus = async (req, res) => {
     try {
         const { status } = req.body;
-        if (!["active", "ended"].includes(status)) {
-            return res.status(400).json({ success: false, message: "status must be 'active' or 'ended'" });
+        if (!["draft", "active", "ended"].includes(status)) {
+            return res.status(400).json({
+                success: false,
+                message: "El estado debe ser 'draft' (pendiente/pausada), 'active' (activa) o 'ended' (apagada/finalizada)."
+            });
         }
 
         const election = await Election.findById(req.params.id);
@@ -326,16 +333,25 @@ export const updateElectionStatus = async (req, res) => {
             return res.status(403).json({ success: false, message: "Forbidden" });
         }
 
-        if (!election.isPaid || (election.requiresAdminReview && election.approvalStatus !== "approved")) {
-            return res.status(400).json({
-                success: false,
-                message: "El proceso debe estar pagado (y aprobado si seleccionaste Paquete de Auditorías) antes de activarse."
-            });
+        const isAdmin = req.user?.role === "admin";
+        if (status === "active" && !isAdmin) {
+            if (!election.isPaid || (election.requiresAdminReview && election.approvalStatus !== "approved")) {
+                return res.status(400).json({
+                    success: false,
+                    message: "El proceso debe estar pagado (y aprobado si seleccionaste Paquete de Auditorías) antes de activarse."
+                });
+            }
+        }
+
+        if (status === "active" && isAdmin && election.approvalStatus === "pending") {
+            election.approvalStatus = "approved";
+            election.approvedBy = req.user.email || req.user.id || "admin";
+            election.approvedAt = new Date();
         }
 
         election.status = status;
 
-        if (web3Service.isWeb3Configured()) {
+        if (web3Service.isWeb3Configured() && (status === "active" || (status === "ended" && (election.isPaid || election.web3?.registered)))) {
             const voters = await Voter.find({ election: election._id }).select("cedula").lean();
             const padronRoot = computeMerkleRoot(voters.map((v) => computePadronLeaf(election._id, v.cedula)));
 
@@ -361,7 +377,7 @@ export const updateElectionStatus = async (req, res) => {
                 const ballots = await Ballot.find({ election: election._id })
                     .select("ballotCommitment choiceHash weight")
                     .lean();
-                const tallyRoot = computeElectionTallyRoot(ballots);
+                const tallyRoot = computeElectionTallyRoot(ballots, election._id);
                 const fin = await web3Service.finalizeElectionOnChain({
                     electionId: election._id,
                     tallyRoot,
@@ -374,7 +390,7 @@ export const updateElectionStatus = async (req, res) => {
                     ...(election.web3 || {}),
                     registered: true,
                     finalized: true,
-                    tallyRoot,
+                    tallyRoot: fin.tallyRoot || tallyRoot,
                     finalizeTxHash: fin.txHash || election.web3?.finalizeTxHash || "",
                     contractAddress: fin.contractAddress || election.web3?.contractAddress || "",
                     chainId: fin.chainId || election.web3?.chainId || null,
@@ -386,7 +402,7 @@ export const updateElectionStatus = async (req, res) => {
         await election.save();
         res.status(200).json({ success: true, data: election });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, message: err.message, error: err.message });
     }
 };
 
@@ -573,7 +589,7 @@ export const getElectionReport = async (req, res) => {
                 },
                 web3: {
                     ...onChain,
-                    tallyRoot: computeElectionTallyRoot(ballots)
+                    tallyRoot: computeElectionTallyRoot(ballots, election._id)
                 },
                 results,
                 questionResults,

@@ -81,6 +81,27 @@ export const login = async (req, res) => {
     }
 };
 
+export const getMe = async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id).select("-password");
+        if (!user) {
+            return res.status(404).json({ success: false, message: "Usuario no encontrado" });
+        }
+        res.status(200).json({
+            success: true,
+            user: {
+                id: user._id,
+                username: user.username,
+                email: user.email,
+                role: user.role,
+                organization: user.organization
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+};
+
 export const logout = async (_req, res) => {
     res.status(200).json({ success: true, data: {} });
 };

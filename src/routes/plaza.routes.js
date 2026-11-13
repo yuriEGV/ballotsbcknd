@@ -20,3 +20,4 @@ router.get("/profile/me", getCitizenProfile);
 router.post("/rewards/redeem", redeemPlazaReward);
 
 export default router;
+

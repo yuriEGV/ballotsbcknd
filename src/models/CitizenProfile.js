@@ -80,3 +80,4 @@ const citizenProfileSchema = new mongoose.Schema(
 );
 
 export default mongoose.model("CitizenProfile", citizenProfileSchema);
+
