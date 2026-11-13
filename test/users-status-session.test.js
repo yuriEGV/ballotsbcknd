@@ -343,3 +343,38 @@ test("GET /api/auth/me requires JWT and returns verified user profile", async ()
         User.findById = originalFindById;
     }
 });
+
+test("All frontend PRICING_CATALOG property paths exist in frontend pricing catalog", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const { PRICING_CATALOG } = await import("../frontend-fixes/src/utils/pricing.js");
+
+    const srcRoot = path.resolve(process.cwd(), "frontend-fixes/src");
+    const walk = (dir) => {
+        const files = [];
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) files.push(...walk(full));
+            else if (/\.(js|jsx)$/.test(entry.name)) files.push(full);
+        }
+        return files;
+    };
+
+    const files = walk(srcRoot);
+    assert.ok(files.length > 0);
+    for (const file of files) {
+        const src = fs.readFileSync(file, "utf8");
+        for (const m of src.matchAll(/PRICING_CATALOG\.([A-Za-z0-9_.]+)/g)) {
+            const keys = m[1].split(".");
+            let cur = PRICING_CATALOG;
+            for (const key of keys) {
+                assert.ok(
+                    cur !== null && cur !== undefined && key in cur,
+                    `Invalid PRICING_CATALOG.${m[1]} in ${path.relative(srcRoot, file)} (missing "${key}")`
+                );
+                cur = cur[key];
+            }
+            assert.notEqual(cur, undefined, `PRICING_CATALOG.${m[1]} in ${file} evaluated to undefined`);
+        }
+    }
+});
