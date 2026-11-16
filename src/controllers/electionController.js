@@ -46,13 +46,24 @@ export const createElection = async (req, res) => {
             votersCount,
             modules,
             couponCode
-        } = req.body;
+        } = req.body || {};
         const userId = req.user?.id;
         const resolvedKind = processKind === "survey" ? "survey" : "election";
 
+        const parsedStart = new Date(startDate);
+        const parsedEnd = new Date(endDate);
+        if (Number.isNaN(parsedStart.getTime()) || Number.isNaN(parsedEnd.getTime()) || parsedEnd <= parsedStart) {
+            return res.status(400).json({
+                success: false,
+                message: "Las fechas de inicio y cierre son inválidas o la fecha de cierre es anterior al inicio."
+            });
+        }
+        const safeVotersCount = Math.min(1000000, Math.max(1, parseInt(votersCount, 10) || 100));
+
         let discountPercentage = 0;
-        if (couponCode) {
-            const coupon = await Coupon.findOne({ code: String(couponCode).toUpperCase(), isActive: true });
+        const cleanCoupon = couponCode ? String(couponCode).trim().toUpperCase() : "";
+        if (cleanCoupon) {
+            const coupon = await Coupon.findOne({ code: cleanCoupon, isActive: true });
             const isExpired = coupon?.validUntil && new Date() > new Date(coupon.validUntil);
             if (coupon && !isExpired) {
                 discountPercentage = Number(coupon.discountPercentage) || 0;
@@ -84,7 +95,7 @@ export const createElection = async (req, res) => {
 
         const pricing = calculateProcessPricing({
             processKind: resolvedKind,
-            votersCount,
+            votersCount: safeVotersCount,
             modules,
             discountPercentage,
             freeSchoolBenefit
@@ -229,8 +240,8 @@ export const getElectionById = async (req, res) => {
             .populate("organizer", "username email organization");
         if (!election) return res.status(404).json({ success: false, message: "Election not found" });
 
-        // Authenticated non-admin organizers cannot inspect another organizer's private election
-        if (req.user && req.user.role !== "admin" && req.user.role !== "voter") {
+        // Authenticated non-admin platform users cannot inspect another organizer's election
+        if (req.user && ["organizer", "observer"].includes(req.user.role)) {
             const organizerId = election.organizer?._id?.toString() || election.organizer?.toString();
             if (organizerId && organizerId !== req.user.id?.toString()) {
                 return res.status(403).json({
@@ -240,8 +251,29 @@ export const getElectionById = async (req, res) => {
             }
         }
 
-        // Public / voter requests only receive public ballot metadata (never adminNote / price)
-        if (!req.user || req.user.role === "voter") {
+        // Voter tokens are scoped strictly to their authorized electionId
+        if (req.user?.role === "voter" && req.user.electionId?.toString() !== election._id.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: "Tu sesión de votación no corresponde a esta elección."
+            });
+        }
+
+        // Citizen tokens or unauthenticated visitors can never view unreleased drafts or rejected processes
+        if (!req.user || req.user.role === "voter" || req.user.role === "citizen") {
+            const isPublicState = ["active", "ended"].includes(election.status) && election.approvalStatus !== "rejected";
+            if (!isPublicState) {
+                return res.status(403).json({
+                    success: false,
+                    message: "Este proceso aún no se encuentra habilitado al público."
+                });
+            }
+            if (req.user?.role === "citizen" && election.processKind !== "survey") {
+                return res.status(403).json({
+                    success: false,
+                    message: "Acceso restringido."
+                });
+            }
             return res.status(200).json({
                 success: true,
                 data: {
@@ -294,10 +326,59 @@ export const updateElection = async (req, res) => {
             });
         }
 
-        const allowed = ["title", "description", "startDate", "endDate", "candidates", "settings", "electionType", "plaza"];
-        allowed.forEach((field) => {
-            if (req.body[field] !== undefined) election[field] = req.body[field];
-        });
+        if (req.body.title !== undefined) election.title = String(req.body.title).trim();
+        if (req.body.description !== undefined) election.description = String(req.body.description || "").trim();
+        if (req.body.electionType !== undefined) election.electionType = String(req.body.electionType).trim();
+
+        if (req.body.startDate !== undefined || req.body.endDate !== undefined) {
+            const nextStart = req.body.startDate !== undefined ? new Date(req.body.startDate) : new Date(election.startDate);
+            const nextEnd = req.body.endDate !== undefined ? new Date(req.body.endDate) : new Date(election.endDate);
+            if (Number.isNaN(nextStart.getTime()) || Number.isNaN(nextEnd.getTime()) || nextEnd <= nextStart) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Fechas inválidas: la fecha de cierre debe ser posterior al inicio."
+                });
+            }
+            election.startDate = nextStart;
+            election.endDate = nextEnd;
+        }
+
+        if (Array.isArray(req.body.candidates)) {
+            election.candidates = req.body.candidates
+                .filter((c) => c && String(c.name || "").trim())
+                .map((c) => ({
+                    ...(c._id ? { _id: c._id } : {}),
+                    name: String(c.name).trim(),
+                    description: String(c.description || "").trim(),
+                    imageUrl: String(c.imageUrl || "").trim()
+                }));
+        }
+
+        if (req.body.settings && typeof req.body.settings === "object") {
+            const cur = election.settings?.toObject ? election.settings.toObject() : (election.settings || {});
+            const s = req.body.settings;
+            election.settings = {
+                anonymous: s.anonymous !== undefined ? Boolean(s.anonymous) : Boolean(cur.anonymous ?? true),
+                publicResults: s.publicResults !== undefined ? Boolean(s.publicResults) : Boolean(cur.publicResults),
+                weightedVoting: s.weightedVoting !== undefined ? Boolean(s.weightedVoting) : Boolean(cur.weightedVoting),
+                virtualAssembly: s.virtualAssembly !== undefined ? Boolean(s.virtualAssembly) : Boolean(cur.virtualAssembly),
+                allowAutoRegistration: s.allowAutoRegistration !== undefined ? Boolean(s.allowAutoRegistration) : Boolean(cur.allowAutoRegistration),
+                requireVotingKey: s.requireVotingKey !== undefined ? Boolean(s.requireVotingKey) : Boolean(cur.requireVotingKey)
+            };
+        }
+
+        if (req.body.plaza && typeof req.body.plaza === "object") {
+            const curP = election.plaza?.toObject ? election.plaza.toObject() : (election.plaza || {});
+            const p = req.body.plaza;
+            election.plaza = {
+                featuredInPlaza: p.featuredInPlaza !== undefined ? Boolean(p.featuredInPlaza) : Boolean(curP.featuredInPlaza),
+                category: p.category !== undefined ? String(p.category || "Ciudadanía").trim() : (curP.category || "Ciudadanía"),
+                rewardPoints: p.rewardPoints !== undefined
+                    ? Math.min(1000, Math.max(0, Number(p.rewardPoints) || 0))
+                    : (curP.rewardPoints ?? 50)
+            };
+        }
+
         if (ballotCount === 0 && req.body.processKind !== undefined && ["election", "survey"].includes(req.body.processKind)) {
             election.processKind = req.body.processKind;
         }

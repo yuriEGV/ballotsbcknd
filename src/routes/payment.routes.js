@@ -1,11 +1,12 @@
 import express from "express";
 import { createPayment, handleWebhook, confirmPaymentManual } from "../controllers/paymentController.js";
 import { requireAuth, requireAdmin } from "../middleware/authMiddleware.js";
+import { validateObjectIdParam } from "../middleware/security.js";
 
 const router = express.Router();
 
 router.post("/create-preference", requireAuth, createPayment);
 router.post("/webhook", handleWebhook);
-router.post("/confirm-manual/:electionId", requireAuth, requireAdmin, confirmPaymentManual);
+router.post("/confirm-manual/:electionId", requireAuth, requireAdmin, validateObjectIdParam("electionId"), confirmPaymentManual);
 
 export default router;

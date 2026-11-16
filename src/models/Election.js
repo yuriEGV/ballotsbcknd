@@ -127,7 +127,7 @@ const electionSchema = new mongoose.Schema({
 });
 
 electionSchema.index({ organizer: 1, createdAt: -1 });
-electionSchema.index({ processKind: 1, "plaza.featuredInPlaza": 1, status: 1 });
+electionSchema.index({ processKind: 1, "plaza.featuredInPlaza": 1, status: 1, createdAt: -1 });
 electionSchema.index({ requiresAdminReview: 1, approvalStatus: 1 });
 
 export default mongoose.model("Election", electionSchema);

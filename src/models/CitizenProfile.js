@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import bcrypt from "bcryptjs";
 
 /**
  * Plaza Ciudadana participant profile.
@@ -51,7 +52,17 @@ const citizenProfileSchema = new mongoose.Schema(
         email: {
             type: String,
             default: "",
-            trim: true
+            trim: true,
+            lowercase: true
+        },
+        password: {
+            type: String,
+            select: false
+        },
+        linkedUser: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null
         },
         commune: {
             type: String,
@@ -78,6 +89,33 @@ const citizenProfileSchema = new mongoose.Schema(
     },
     { timestamps: true }
 );
+
+citizenProfileSchema.index(
+    { email: 1 },
+    {
+        unique: true,
+        partialFilterExpression: { email: { $type: "string", $gt: "" } }
+    }
+);
+citizenProfileSchema.index(
+    { linkedUser: 1 },
+    {
+        unique: true,
+        partialFilterExpression: { linkedUser: { $type: "objectId" } }
+    }
+);
+
+citizenProfileSchema.pre("save", async function (next) {
+    if (!this.isModified("password") || !this.password) return next();
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+});
+
+citizenProfileSchema.methods.matchPassword = async function (enteredPassword) {
+    if (!this.password) return false;
+    return bcrypt.compare(String(enteredPassword || ""), this.password);
+};
 
 export default mongoose.model("CitizenProfile", citizenProfileSchema);
 

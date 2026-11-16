@@ -11,7 +11,8 @@ import ballotService from "../src/services/ballotService.js";
 import web3Service from "../src/services/web3Service.js";
 import { createElection } from "../src/controllers/electionController.js";
 import { confirmPaymentManual } from "../src/controllers/paymentController.js";
-import { getPricingCatalog, respondToSurvey, redeemPlazaReward } from "../src/controllers/plazaController.js";
+import jwt from "jsonwebtoken";
+import { getPricingCatalog, registerCitizen, loginCitizen, respondToSurvey, redeemPlazaReward } from "../src/controllers/plazaController.js";
 import { verifyBallotReceipt } from "../src/controllers/auditController.js";
 import {
     buildCanonicalChoiceCode,
@@ -310,7 +311,7 @@ test("multi-question survey ballot commitment is deterministic and verifiable in
     }
 });
 
-test("plazaController handles pricing catalog, survey response points, duplicate guard, and coupon redemption", async () => {
+test("plazaController handles pricing catalog, citizen auth, survey response points, duplicate guard, and coupon redemption", async () => {
     const resPricing = createMockRes();
     getPricingCatalog({}, resPricing);
     assert.equal(resPricing.statusCode, 200);
@@ -322,6 +323,8 @@ test("plazaController handles pricing catalog, survey response points, duplicate
     const originalVoterFindOne = Voter.findOne;
     const originalBallotExists = Ballot.exists;
     const originalCastVote = ballotService.castVote;
+    const originalProfileFindOne = CitizenProfile.findOne;
+    const originalProfileCreate = CitizenProfile.create;
     const originalProfileFindOneAndUpdate = CitizenProfile.findOneAndUpdate;
     const originalBallotFind = Ballot.find;
     const originalCouponCreate = Coupon.create;
@@ -331,8 +334,75 @@ test("plazaController handles pricing catalog, survey response points, duplicate
     const profileId = new mongoose.Types.ObjectId();
     let capturedToken = null;
     const createdCoupons = [];
+    const storedProfiles = [];
 
     try {
+        CitizenProfile.findOne = (query) => {
+            const found = storedProfiles.find((p) => {
+                if (query.$or) {
+                    return query.$or.some((cond) =>
+                        (cond.cedulaNormalized && p.cedulaNormalized === cond.cedulaNormalized) ||
+                        (cond.email && p.email === cond.email)
+                    );
+                }
+                if (query.email) return p.email === query.email;
+                if (query.cedulaNormalized) return p.cedulaNormalized === query.cedulaNormalized;
+                return false;
+            }) || null;
+            const p = Promise.resolve(found);
+            p.select = () => Promise.resolve(found);
+            return p;
+        };
+        CitizenProfile.create = async (payload) => {
+            const doc = {
+                _id: profileId,
+                ...payload,
+                points: 0,
+                participationsCount: 0,
+                history: [],
+                redemptions: [],
+                matchPassword: async (pw) => pw === payload.password
+            };
+            storedProfiles.push(doc);
+            return doc;
+        };
+
+        // 1. Citizen registration enforces password & prevents duplicate hijacking
+        const resReg = createMockRes();
+        await registerCitizen({
+            body: {
+                displayName: "Vecino Demo",
+                cedula: "12.345.678-9",
+                email: "vecino@plaza.cl",
+                password: "PasswordSegura2026"
+            }
+        }, resReg);
+        assert.equal(resReg.statusCode, 201);
+        assert.ok(resReg.body.data.citizenToken);
+        capturedToken = resReg.body.data.citizenToken;
+
+        // Re-registering same RUT must fail with 409 (never hijack existing account)
+        const resDupReg = createMockRes();
+        await registerCitizen({
+            body: {
+                displayName: "Atacante",
+                cedula: "12345678-9",
+                email: "atacante@plaza.cl",
+                password: "PasswordSegura2026"
+            }
+        }, resDupReg);
+        assert.equal(resDupReg.statusCode, 409);
+
+        // Login with wrong password returns 401; valid password returns 200
+        const resBadLogin = createMockRes();
+        await loginCitizen({ body: { identifier: "vecino@plaza.cl", password: "wrong" } }, resBadLogin);
+        assert.equal(resBadLogin.statusCode, 401);
+
+        const resGoodLogin = createMockRes();
+        await loginCitizen({ body: { identifier: "12.345.678-9", password: "PasswordSegura2026" } }, resGoodLogin);
+        assert.equal(resGoodLogin.statusCode, 200);
+        assert.ok(resGoodLogin.body.data.citizenToken);
+
         Election.findById = async () => ({
             _id: surveyId,
             title: "Prioridades Ciudadanas",
@@ -353,27 +423,41 @@ test("plazaController handles pricing catalog, survey response points, duplicate
             ballotCommitment: `0x${"12".repeat(32)}`,
             web3: { anchored: true, txHash: `0x${"34".repeat(32)}`, explorerUrl: "https://amoy.polygonscan.com/tx/0x34" }
         });
-        CitizenProfile.findOneAndUpdate = async (_query, _update) => ({
-            _id: profileId,
-            cedulaNormalized: "123456789",
-            displayName: "Vecino Demo",
-            points: 175,
-            participationsCount: 2,
-            history: [],
-            redemptions: []
-        });
+        CitizenProfile.findOneAndUpdate = async (query) => {
+            assert.equal(query.cedulaNormalized, "123456789"); // must come from JWT, never spoofed body
+            return {
+                _id: profileId,
+                cedulaNormalized: "123456789",
+                displayName: "Vecino Demo",
+                points: 175,
+                participationsCount: 2,
+                history: [],
+                redemptions: []
+            };
+        };
         Ballot.find = () => ({
             select: () => ({
                 lean: async () => []
             })
         });
 
-        const reqRespond = {
+        // Unauthenticated response attempt must be rejected with 401
+        const resUnauth = createMockRes();
+        await respondToSurvey({
             params: { id: surveyId.toString() },
             headers: {},
             socket: { remoteAddress: "127.0.0.1" },
+            body: { cedula: "99.999.999-9", surveyAnswers: [{ questionId: "q1", selectedOptions: ["Seguridad"] }] }
+        }, resUnauth);
+        assert.equal(resUnauth.statusCode, 401);
+
+        // Authenticated citizen responds (even if body tries spoofed cedula, JWT identity prevails)
+        const reqRespond = {
+            params: { id: surveyId.toString() },
+            headers: { authorization: `Bearer ${capturedToken}` },
+            socket: { remoteAddress: "127.0.0.1" },
             body: {
-                cedula: "12.345.678-9",
+                cedula: "99.999.999-9",
                 displayName: "Vecino Demo",
                 surveyAnswers: [{ questionId: "q1", selectedOptions: ["Seguridad"] }]
             }
@@ -384,8 +468,6 @@ test("plazaController handles pricing catalog, survey response points, duplicate
         assert.equal(resRespond.statusCode, 201);
         assert.equal(resRespond.body.data.pointsAwarded, 75);
         assert.equal(resRespond.body.data.profile.points, 175);
-        assert.ok(resRespond.body.data.citizenToken);
-        capturedToken = resRespond.body.data.citizenToken;
 
         // Duplicate prevention in respondToSurvey returns 409
         Ballot.exists = async () => ({ _id: new mongoose.Types.ObjectId() });
@@ -421,11 +503,14 @@ test("plazaController handles pricing catalog, survey response points, duplicate
         assert.equal(createdCoupons[0].discountPercentage, 15);
         assert.equal(createdCoupons[0].isActive, true);
         assert.match(resRedeem.body.data.redeemed.code, /^PLZ15-/);
+        assert.ok(jwt.verify(capturedToken, process.env.JWT_SECRET).role === "citizen");
     } finally {
         Election.findById = originalElectionFindById;
         Voter.findOne = originalVoterFindOne;
         Ballot.exists = originalBallotExists;
         ballotService.castVote = originalCastVote;
+        CitizenProfile.findOne = originalProfileFindOne;
+        CitizenProfile.create = originalProfileCreate;
         CitizenProfile.findOneAndUpdate = originalProfileFindOneAndUpdate;
         Ballot.find = originalBallotFind;
         Coupon.create = originalCouponCreate;

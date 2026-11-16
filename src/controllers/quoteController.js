@@ -1,6 +1,7 @@
 import Quote from "../models/Quote.js";
 import Coupon from "../models/Coupon.js";
 import { calculateProcessPricing } from "../utils/pricing.js";
+import { isValidEmail } from "../middleware/security.js";
 
 // @desc    Create a new quote request (Lead Capture)
 // @route   POST /api/quotes
@@ -18,11 +19,26 @@ export const createQuoteRequest = async (req, res) => {
             technicalSupport,
             fullAuditPackage,
             couponCode
-        } = req.body;
+        } = req.body || {};
+
+        const cleanName = String(name || "").trim();
+        const cleanEmail = String(email || "").trim().toLowerCase();
+        const cleanVoters = Math.min(1000000, Math.max(1, parseInt(votersCount, 10) || 0));
+
+        if (!cleanName || cleanName.length < 2) {
+            return res.status(400).json({ success: false, message: "El nombre de contacto es obligatorio." });
+        }
+        if (!isValidEmail(cleanEmail)) {
+            return res.status(400).json({ success: false, message: "Ingresa un correo electrónico válido." });
+        }
+        if (cleanVoters < 1) {
+            return res.status(400).json({ success: false, message: "Ingresa una cantidad válida de participantes." });
+        }
 
         let discountPercentage = 0;
-        if (couponCode) {
-            const coupon = await Coupon.findOne({ code: String(couponCode).toUpperCase(), isActive: true });
+        const cleanCoupon = couponCode ? String(couponCode).trim().toUpperCase() : "";
+        if (cleanCoupon) {
+            const coupon = await Coupon.findOne({ code: cleanCoupon, isActive: true });
             const isExpired = coupon?.validUntil && new Date() > new Date(coupon.validUntil);
             if (coupon && !isExpired) {
                 discountPercentage = coupon.discountPercentage;
@@ -37,7 +53,7 @@ export const createQuoteRequest = async (req, res) => {
 
         const pricing = calculateProcessPricing({
             processKind: resolvedKind,
-            votersCount,
+            votersCount: cleanVoters,
             modules: {
                 virtualAssembly: Array.isArray(modules) ? modules.includes("virtual_assembly") : Boolean(modules?.virtualAssembly),
                 technicalSupport: Boolean(technicalSupport || modules?.technicalSupport),
@@ -48,13 +64,13 @@ export const createQuoteRequest = async (req, res) => {
         });
 
         const newQuote = await Quote.create({
-            name,
-            email,
-            phone,
+            name: cleanName,
+            email: cleanEmail,
+            phone: String(phone || "").trim(),
             processKind: resolvedKind,
-            votersCount,
-            eventType,
-            modules: Array.isArray(modules) ? modules : [],
+            votersCount: cleanVoters,
+            eventType: String(eventType || "Otro").trim(),
+            modules: Array.isArray(modules) ? modules.map((m) => String(m)) : [],
             technicalSupport: pricing.normalizedModules.technicalSupport,
             fullAuditPackage: pricing.normalizedModules.fullAuditPackage,
             estimatedCost: pricing.total

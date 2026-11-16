@@ -1,6 +1,7 @@
 import express from "express";
 import { getUsers, createUser, updateUser, deleteUser } from "../controllers/userController.js";
 import { requireAuth, requireAdmin } from "../middleware/authMiddleware.js";
+import { validateObjectIdParam } from "../middleware/security.js";
 
 const router = express.Router();
 
@@ -10,7 +11,7 @@ router.use(requireAdmin);
 
 router.get("/", getUsers);
 router.post("/", createUser);
-router.put("/:id", updateUser);
-router.delete("/:id", deleteUser);
+router.put("/:id", validateObjectIdParam("id"), updateUser);
+router.delete("/:id", validateObjectIdParam("id"), deleteUser);
 
 export default router;

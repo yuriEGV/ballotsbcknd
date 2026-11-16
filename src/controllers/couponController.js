@@ -2,14 +2,14 @@ import Coupon from '../models/Coupon.js';
 
 export const validateCoupon = async (req, res) => {
     try {
-        const { code } = req.body;
+        const cleanCode = typeof req.body?.code === "string" ? req.body.code.trim().toUpperCase() : "";
 
-        if (!code) {
+        if (!cleanCode) {
             return res.status(400).json({ message: 'El código del cupón es requerido.' });
         }
 
         const coupon = await Coupon.findOne({
-            code: code.toUpperCase(),
+            code: cleanCode,
             isActive: true
         });
 
@@ -34,16 +34,25 @@ export const validateCoupon = async (req, res) => {
 
 export const createCoupon = async (req, res) => {
     try {
-        const { code, discountPercentage, validUntil } = req.body;
+        const { code, discountPercentage, validUntil } = req.body || {};
+        const cleanCode = String(code || "").trim().toUpperCase();
+        const discount = Number(discountPercentage);
 
-        const existing = await Coupon.findOne({ code: code.toUpperCase() });
+        if (!cleanCode) {
+            return res.status(400).json({ message: 'El código del cupón es requerido.' });
+        }
+        if (!Number.isFinite(discount) || discount < 1 || discount > 100) {
+            return res.status(400).json({ message: 'El porcentaje de descuento debe estar entre 1 y 100.' });
+        }
+
+        const existing = await Coupon.findOne({ code: cleanCode });
         if (existing) {
             return res.status(400).json({ message: 'El código de cupón ya existe.' });
         }
 
         const newCoupon = new Coupon({
-            code: code.toUpperCase(),
-            discountPercentage,
+            code: cleanCode,
+            discountPercentage: discount,
             validUntil
         });
 

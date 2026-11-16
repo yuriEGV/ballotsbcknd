@@ -31,7 +31,10 @@ function verifyMercadoPagoSignature(req) {
 
     const manifest = `id:${dataId};request-id:${xRequestId};ts:${parts.ts};`;
     const expected = crypto.createHmac("sha256", secret).update(manifest).digest("hex");
-    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(parts.v1));
+    const expectedBuf = Buffer.from(expected, "utf8");
+    const providedBuf = Buffer.from(String(parts.v1), "utf8");
+    if (expectedBuf.length !== providedBuf.length) return false;
+    return crypto.timingSafeEqual(expectedBuf, providedBuf);
 }
 
 async function activatePaidElection(election) {
@@ -81,14 +84,16 @@ async function activatePaidElection(election) {
  * Create a payment preference for an election
  */
 export const createPayment = async (req, res) => {
-    let debugPrice = "N/A";
     try {
         const client = getMpClient();
         if (!client) {
             return res.status(503).json({ success: false, message: "MercadoPago no está configurado." });
         }
 
-        const { electionId } = req.body;
+        const { electionId } = req.body || {};
+        if (!electionId) {
+            return res.status(400).json({ success: false, message: "electionId es requerido." });
+        }
         const election = await Election.findById(electionId);
 
         if (!election) {
@@ -100,7 +105,6 @@ export const createPayment = async (req, res) => {
             return res.status(403).json({ success: false, message: "No autorizado para pagar esta elección" });
         }
 
-        debugPrice = election.price;
         const unitPriceNum = Number(election.price);
         if (!Number.isFinite(unitPriceNum) || unitPriceNum <= 0) {
             await activatePaidElection(election);
@@ -141,8 +145,9 @@ export const createPayment = async (req, res) => {
         console.error("MercadoPago Error:", error);
         res.status(500).json({
             success: false,
-            error: `Error de Mercado Pago: ${error.message}`,
-            debug: { priceInDb: debugPrice }
+            error: process.env.NODE_ENV === "production"
+                ? "No se pudo iniciar la pasarela de pago."
+                : `Error de Mercado Pago: ${error.message}`
         });
     }
 };

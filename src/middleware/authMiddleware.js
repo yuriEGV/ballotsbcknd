@@ -54,3 +54,25 @@ export const requireVoter = (req, res, next) => {
     }
     next();
 };
+
+/**
+ * Citizen-only middleware — ensures bearer token belongs to an authenticated Plaza Ciudadana account.
+ */
+export const requireCitizen = (req, res, next) => {
+    if (!req.user || req.user.role !== "citizen") {
+        return res.status(403).json({ success: false, message: "Sesión ciudadana requerida." });
+    }
+    next();
+};
+
+/**
+ * Allows authenticated platform users (admin/organizer/observer) OR Plaza Ciudadana accounts,
+ * while explicitly blocking single-election booth voter tokens.
+ */
+export const requirePlatformOrCitizen = (req, res, next) => {
+    const allowed = ["admin", "organizer", "observer", "citizen"];
+    if (!req.user || !allowed.includes(req.user.role)) {
+        return res.status(403).json({ success: false, message: "Debes ingresar al sistema para acceder a esta sección." });
+    }
+    next();
+};

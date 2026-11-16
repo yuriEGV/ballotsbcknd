@@ -15,24 +15,25 @@ import {
     anchorElectionWeb3
 } from "../controllers/auditController.js";
 import { optionalAuth, requireAuth, requireAdmin } from "../middleware/authMiddleware.js";
+import { validateObjectIdParam } from "../middleware/security.js";
 
 const router = express.Router();
 
 router.post("/", requireAuth, createElection);
 router.get("/", requireAuth, getElections);
-router.get("/:id", optionalAuth, getElectionById);
-router.put("/:id", requireAuth, updateElection);
-router.put("/:id/status", requireAuth, updateElectionStatus);
+router.get("/:id", validateObjectIdParam("id"), optionalAuth, getElectionById);
+router.put("/:id", validateObjectIdParam("id"), requireAuth, updateElection);
+router.put("/:id/status", validateObjectIdParam("id"), requireAuth, updateElectionStatus);
 
 // Admin
-router.put("/:id/evaluate", requireAuth, requireAdmin, evaluateElection);
+router.put("/:id/evaluate", validateObjectIdParam("id"), requireAuth, requireAdmin, evaluateElection);
 
 // Voters stats & reports
-router.get("/:id/voters", requireAuth, getElectionVoters);
-router.get("/:id/report", requireAuth, getElectionReport);
-router.get("/:id/audit", optionalAuth, getAuditLog);
-router.get("/:id/verify/:commitment", verifyBallotReceipt);
-router.post("/:id/anchor", requireAuth, anchorElectionWeb3);
+router.get("/:id/voters", validateObjectIdParam("id"), requireAuth, getElectionVoters);
+router.get("/:id/report", validateObjectIdParam("id"), requireAuth, getElectionReport);
+router.get("/:id/audit", validateObjectIdParam("id"), optionalAuth, getAuditLog);
+router.get("/:id/verify/:commitment", validateObjectIdParam("id"), verifyBallotReceipt);
+router.post("/:id/anchor", validateObjectIdParam("id"), requireAuth, anchorElectionWeb3);
 
 // Legacy unauthenticated vote route disabled in favor of authenticated Web3 POST /api/ballots
 router.post("/:id/vote", (_req, res) => {
